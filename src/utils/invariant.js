@@ -22,6 +22,7 @@
 
 var validateFormat = function(format) {};
 
+/*
 if (__DEV__) {
   validateFormat = function(format) {
     if (format === undefined) {
@@ -29,6 +30,7 @@ if (__DEV__) {
     }
   };
 }
+ */
 
 function invariant(condition, format, a, b, c, d, e, f) {
   validateFormat(format);
