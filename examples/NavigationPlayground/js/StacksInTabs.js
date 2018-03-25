@@ -3,28 +3,37 @@
  */
 
 import React from 'react';
-import { Button, ScrollView } from 'react-native';
-import { StackNavigator, TabNavigator } from 'react-navigation';
+import { ScrollView, StatusBar } from 'react-native';
+import {
+  SafeAreaView,
+  createStackNavigator,
+  createBottomTabNavigator,
+} from 'react-navigation';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import SampleText from './SampleText';
+import { Button } from './commonComponents/ButtonWithMargin';
 
 const MyNavScreen = ({ navigation, banner }) => (
   <ScrollView>
-    <SampleText>{banner}</SampleText>
-    <Button
-      onPress={() => navigation.navigate('Profile', { name: 'Jordan' })}
-      title="Open profile screen"
-    />
-    <Button
-      onPress={() => navigation.navigate('NotifSettings')}
-      title="Open notifications screen"
-    />
-    <Button
-      onPress={() => navigation.navigate('SettingsTab')}
-      title="Go to settings tab"
-    />
-    <Button onPress={() => navigation.goBack(null)} title="Go back" />
+    <SafeAreaView forceInset={{ horizontal: 'always' }}>
+      <SampleText>{banner}</SampleText>
+      <Button
+        onPress={() => navigation.navigate('Profile', { name: 'Jordan' })}
+        title="Open profile screen"
+      />
+      <Button
+        onPress={() => navigation.navigate('NotifSettings')}
+        title="Open notifications screen"
+      />
+      <Button
+        onPress={() => navigation.navigate('SettingsTab')}
+        title="Go to settings tab"
+      />
+      <Button onPress={() => navigation.goBack(null)} title="Go back" />
+    </SafeAreaView>
+
+    <StatusBar barStyle="default" />
   </ScrollView>
 );
 
@@ -47,7 +56,7 @@ const MySettingsScreen = ({ navigation }) => (
   <MyNavScreen banner="Settings Screen" navigation={navigation} />
 );
 
-const MainTab = StackNavigator({
+const MainTab = createStackNavigator({
   Home: {
     screen: MyHomeScreen,
     path: '/',
@@ -64,7 +73,7 @@ const MainTab = StackNavigator({
   },
 });
 
-const SettingsTab = StackNavigator({
+const SettingsTab = createStackNavigator({
   Settings: {
     screen: MySettingsScreen,
     path: '/',
@@ -80,7 +89,7 @@ const SettingsTab = StackNavigator({
   },
 });
 
-const StacksInTabs = TabNavigator(
+const StacksInTabs = createBottomTabNavigator(
   {
     MainTab: {
       screen: MainTab,
@@ -112,9 +121,9 @@ const StacksInTabs = TabNavigator(
     },
   },
   {
-    tabBarPosition: 'bottom',
-    animationEnabled: false,
-    swipeEnabled: false,
+    tabBarOptions: {
+      showLabel: false,
+    },
   }
 );
 

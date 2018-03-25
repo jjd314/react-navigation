@@ -1,33 +1,43 @@
-/* @flow */
-
 import React from 'react';
-import { BackHandler, Linking } from './PlatformHelpers';
+import withLifecyclePolyfill from 'react-lifecycles-compat';
+import { Linking, AsyncStorage } from 'react-native';
+
+import { BackHandler } from './PlatformHelpers';
 import NavigationActions from './NavigationActions';
 import addNavigationHelpers from './addNavigationHelpers';
+import invariant from './utils/invariant';
 
-import type {
-  NavigationRoute,
-  NavigationAction,
-  NavigationState,
-  NavigationScreenProp,
-  NavigationNavigatorProps,
-  NavigationNavigator,
-} from './TypeDefinition';
+function isStateful(props) {
+  return !props.navigation;
+}
 
-type NavigationContainerProps = {
-  uriPrefix?: string | RegExp,
-  onNavigationStateChange?: (
-    NavigationState,
-    NavigationState,
-    NavigationAction
-  ) => void,
-};
+function validateProps(props) {
+  if (isStateful(props)) {
+    return;
+  }
 
-type Props<O, S> = NavigationContainerProps & NavigationNavigatorProps<O, S>;
+  const { navigation, screenProps, ...containerProps } = props;
 
-type State = {
-  nav: ?NavigationState,
-};
+  const keys = Object.keys(containerProps);
+
+  if (keys.length !== 0) {
+    throw new Error(
+      'This navigator has both navigation and container props, so it is ' +
+        `unclear if it should own its own state. Remove props: "${keys.join(
+          ', '
+        )}" ` +
+        'if the navigator should get its state from the navigation prop. If the ' +
+        'navigator should maintain its own state, do not pass a navigation prop.'
+    );
+  }
+}
+
+// We keep a global flag to catch errors during the state persistence hydrating scenario.
+// The innermost navigator who catches the error will dispatch a new init action.
+let _reactNavigationIsHydratingState = false;
+// Unfortunate to use global state here, but it seems necessesary for the time being. There seems to
+// be some problems with cascading componentDidCatch handlers. Ideally the inner non-stateful navigator
+// catches the error and re-throws it, to be caught by the top-level stateful navigator.
 
 /**
  * Create an HOC that injects the navigation and manages the navigation state
@@ -35,36 +45,59 @@ type State = {
  * This allows to use e.g. the StackNavigator and TabNavigator as root-level
  * components.
  */
-export default function createNavigationContainer<S: *, O>(
-  Component: NavigationNavigator<*, S, *, O>
-) {
-  class NavigationContainer extends React.Component<void, Props<O, S>, State> {
-    state: State;
-    props: Props<O, S>;
-
-    subs: ?{
-      remove: () => void,
-    } = null;
+export default function createNavigationContainer(Component) {
+  class NavigationContainer extends React.Component {
+    subs = null;
 
     static router = Component.router;
+    static navigationOptions = null;
 
-    constructor(props: Props<O, S>) {
+    static getDerivedStateFromProps(nextProps, prevState) {
+      validateProps(nextProps);
+      return null;
+    }
+
+    _actionEventSubscribers = new Set();
+
+    constructor(props) {
       super(props);
 
-      this._validateProps(props);
+      validateProps(props);
+
+      this._initialAction = NavigationActions.init();
+
+      if (this._isStateful()) {
+        this.subs = BackHandler.addEventListener('hardwareBackPress', () => {
+          if (!this._isMounted) {
+            this.subs && this.subs.remove();
+          } else {
+            // dispatch returns true if the action results in a state change,
+            // and false otherwise. This maps well to what BackHandler expects
+            // from a callback -- true if handled, false if not handled
+            return this.dispatch(NavigationActions.back());
+          }
+        });
+      }
 
       this.state = {
-        nav: this._isStateful()
-          ? Component.router.getStateForAction(NavigationActions.init())
-          : null,
+        nav:
+          this._isStateful() && !props.persistenceKey
+            ? Component.router.getStateForAction(this._initialAction)
+            : null,
       };
     }
 
-    _isStateful(): boolean {
-      return !this.props.navigation;
+    _renderLoading() {
+      return this.props.renderLoadingExperimental
+        ? this.props.renderLoadingExperimental()
+        : null;
     }
 
-    _validateProps(props: Props<O, S>) {
+    _isStateful() {
+      return isStateful(this.props);
+    }
+
+    _validateProps(props) {
       if (this._isStateful()) {
         return;
       }
@@ -85,12 +118,14 @@ export default function createNavigationContainer<S: *, O>(
       }
     }
 
-    _urlToPathAndParams(url: string) {
+    _urlToPathAndParams(url) {
       const params = {};
       const delimiter = this.props.uriPrefix || '://';
       let path = url.split(delimiter)[1];
       if (typeof path === 'undefined') {
         path = url;
+      } else if (path === '') {
+        path = '/';
       }
       return {
         path,
@@ -98,7 +133,7 @@ export default function createNavigationContainer<S: *, O>(
       };
     }
 
-    _handleOpenURL = ({ url }: { url: string }) => {
+    _handleOpenURL = ({ url }) => {
       const parsedUrl = this._urlToPathAndParams(url);
       if (parsedUrl) {
         const { path, params } = parsedUrl;
@@ -109,11 +144,7 @@ export default function createNavigationContainer<S: *, O>(
       }
     };
 
-    _onNavigationStateChange(
-      prevNav: NavigationState,
-      nav: NavigationState,
-      action: NavigationAction
-    ) {
+    _onNavigationStateChange(prevNav, nav, action) {
       if (
         typeof this.props.onNavigationStateChange === 'undefined' &&
         this._isStateful() &&
@@ -142,62 +173,157 @@ export default function createNavigationContainer<S: *, O>(
       }
     }
 
-    componentWillReceiveProps(nextProps: *) {
-      this._validateProps(nextProps);
+    componentDidUpdate() {
+      // Clear cached _nav every tick
+      if (this._nav === this.state.nav) {
+        this._nav = null;
+      }
     }
 
-    componentDidMount() {
+    async componentDidMount() {
+      this._isMounted = true;
       if (!this._isStateful()) {
         return;
       }
 
-      this.subs = BackHandler.addEventListener('hardwareBackPress', () =>
-        this.dispatch(NavigationActions.back())
-      );
-
       Linking.addEventListener('url', this._handleOpenURL);
 
-      Linking.getInitialURL().then(
-        (url: ?string) => url && this._handleOpenURL({ url })
-      );
+      const { persistenceKey } = this.props;
+      const startupStateJSON =
+        persistenceKey && (await AsyncStorage.getItem(persistenceKey));
+      let startupState = null;
+      try {
+        startupState = startupStateJSON && JSON.parse(startupStateJSON);
+        _reactNavigationIsHydratingState = true;
+      } catch (e) {}
+
+      let action = this._initialAction;
+      if (!startupState) {
+        !!process.env.REACT_NAV_LOGGING &&
+          console.log('Init new Navigation State');
+        startupState = Component.router.getStateForAction(action);
+      }
+
+      const url = await Linking.getInitialURL();
+      const parsedUrl = url && this._urlToPathAndParams(url);
+      if (parsedUrl) {
+        const { path, params } = parsedUrl;
+        const urlAction = Component.router.getActionForPathAndParams(
+          path,
+          params
+        );
+        if (urlAction) {
+          !!process.env.REACT_NAV_LOGGING &&
+            console.log('Applying Navigation Action for Initial URL:', url);
+          action = urlAction;
+          startupState = Component.router.getStateForAction(
+            urlAction,
+            startupState
+          );
+        }
+      }
+      this.setState({ nav: startupState }, () => {
+        _reactNavigationIsHydratingState = false;
+        this._actionEventSubscribers.forEach(subscriber =>
+          subscriber({
+            type: 'action',
+            action,
+            state: this.state.nav,
+            lastState: null,
+          })
+        );
+      });
     }
 
+    componentDidCatch(e, errorInfo) {
+      if (_reactNavigationIsHydratingState) {
+        _reactNavigationIsHydratingState = false;
+        console.warn(
+          'Uncaught exception while starting app from persisted navigation state! Trying to render again with a fresh navigation state..'
+        );
+        this.dispatch(NavigationActions.init());
+      }
+    }
+
+    _persistNavigationState = async nav => {
+      const { persistenceKey } = this.props;
+      if (!persistenceKey) {
+        return;
+      }
+      await AsyncStorage.setItem(persistenceKey, JSON.stringify(nav));
+    };
+
     componentWillUnmount() {
+      this._isMounted = false;
       Linking.removeEventListener('url', this._handleOpenURL);
       this.subs && this.subs.remove();
     }
 
-    dispatch = (action: NavigationAction) => {
-      const { state } = this;
-      if (!this._isStateful()) {
-        return false;
+    // Per-tick temporary storage for state.nav
+
+    dispatch = action => {
+      if (this.props.navigation) {
+        return this.props.navigation.dispatch(action);
       }
-      const nav = Component.router.getStateForAction(action, state.nav);
-      if (nav && nav !== state.nav) {
-        this.setState({ nav }, () =>
-          this._onNavigationStateChange(state.nav, nav, action)
+      this._nav = this._nav || this.state.nav;
+      const oldNav = this._nav;
+      invariant(oldNav, 'should be set in constructor if stateful');
+      const nav = Component.router.getStateForAction(action, oldNav);
+      const dispatchActionEvents = () => {
+        this._actionEventSubscribers.forEach(subscriber =>
+          subscriber({
+            type: 'action',
+            action,
+            state: nav,
+            lastState: oldNav,
+          })
         );
+      };
+      if (nav && nav !== oldNav) {
+        // Cache updates to state.nav during the tick to ensure that subsequent calls will not discard this change
+        this._nav = nav;
+        this.setState({ nav }, () => {
+          this._onNavigationStateChange(oldNav, nav, action);
+          dispatchActionEvents();
+          this._persistNavigationState(nav);
+        });
         return true;
+      } else {
+        dispatchActionEvents();
       }
       return false;
     };
 
-    _navigation: ?NavigationScreenProp<NavigationRoute, NavigationAction>;
-
     render() {
       let navigation = this.props.navigation;
       if (this._isStateful()) {
-        if (!this._navigation || this._navigation.state !== this.state.nav) {
+        const nav = this.state.nav;
+        if (!nav) {
+          return this._renderLoading();
+        }
+        if (!this._navigation || this._navigation.state !== nav) {
           this._navigation = addNavigationHelpers({
             dispatch: this.dispatch,
-            state: this.state.nav,
+            state: nav,
+            addListener: (eventName, handler) => {
+              if (eventName !== 'action') {
+                return { remove: () => {} };
+              }
+              this._actionEventSubscribers.add(handler);
+              return {
+                remove: () => {
+                  this._actionEventSubscribers.delete(handler);
+                },
+              };
+            },
           });
         }
         navigation = this._navigation;
       }
+      invariant(navigation, 'failed to get navigation');
       return <Component {...this.props} navigation={navigation} />;
     }
   }
 
-  return NavigationContainer;
+  return withLifecyclePolyfill(NavigationContainer);
 }

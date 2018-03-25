@@ -1,37 +1,37 @@
 import React, { Component, PropTypes } from 'react';
 import {
-  StyleSheet,
-  Platform,
-  Easing,
-  View,
   Animated,
+  Easing,
   Image,
-  Button,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  View,
 } from 'react-native';
 import {
   Transitioner,
+  SafeAreaView,
   StackRouter,
   createNavigationContainer,
-  addNavigationHelpers,
-  createNavigator
+  createNavigator,
 } from 'react-navigation';
 import SampleText from './SampleText';
+import { Button } from './commonComponents/ButtonWithMargin';
 
 const MyNavScreen = ({ navigation, banner }) => (
-  <View>
+  <SafeAreaView forceInset={{ top: 'always' }}>
     <SampleText>{banner}</SampleText>
-    {navigation.state && navigation.state.routeName !== 'Settings' &&
-      <Button
-        onPress={() => navigation.navigate('Settings')}
-        title="Go to a settings screen"
-      />
-    }
-    
-    <Button
-      onPress={() => navigation.goBack(null)}
-      title="Go back"
-    />
-  </View>
+    {navigation.state &&
+      navigation.state.routeName !== 'Settings' && (
+        <Button
+          onPress={() => navigation.navigate('Settings')}
+          title="Go to a settings screen"
+        />
+      )}
+
+    <Button onPress={() => navigation.goBack(null)} title="Go back" />
+    <StatusBar barStyle="default" />
+  </SafeAreaView>
 );
 
 const MyHomeScreen = ({ navigation }) => (
@@ -44,11 +44,12 @@ const MySettingsScreen = ({ navigation }) => (
 
 class CustomNavigationView extends Component {
   render() {
-    const { navigation, router } = this.props;
+    const { navigation, router, descriptors } = this.props;
 
     return (
       <Transitioner
         configureTransition={this._configureTransition}
+        descriptors={descriptors}
         navigation={navigation}
         render={this._render}
       />
@@ -63,13 +64,11 @@ class CustomNavigationView extends Component {
   }
 
   _render = (transitionProps, prevTransitionProps) => {
-    const scenes = transitionProps.scenes.map(scene => this._renderScene(transitionProps, scene));
-    return (
-      <View style={{ flex: 1 }}>
-        {scenes}
-      </View>
+    const scenes = transitionProps.scenes.map(scene =>
+      this._renderScene(transitionProps, scene)
     );
-  }
+    return <View style={{ flex: 1 }}>{scenes}</View>;
+  };
 
   _renderScene = (transitionProps, scene) => {
     const { navigation, router } = this.props;
@@ -84,24 +83,16 @@ class CustomNavigationView extends Component {
 
     const animation = {
       opacity: animatedValue,
-      transform: [
-        { scale: animatedValue },
-      ],
+      transform: [{ scale: animatedValue }],
     };
 
-    // The prop `router` is populated when we call `createNavigator`.
-    const Scene = router.getComponentForRouteName(scene.route.routeName);
+    const Scene = scene.descriptor.getComponent();
     return (
       <Animated.View key={index} style={[styles.view, animation]}>
-        <Scene
-          navigation={addNavigationHelpers({
-            ...navigation,
-            state: routes[index],
-          })}
-        />
+        <Scene navigation={scene.descriptor.navigation} />
       </Animated.View>
-    )
-  }
+    );
+  };
 }
 
 const CustomRouter = StackRouter({
@@ -110,15 +101,12 @@ const CustomRouter = StackRouter({
 });
 
 const CustomTransitioner = createNavigationContainer(
-  createNavigator(CustomRouter)(CustomNavigationView)
+  createNavigator(CustomNavigationView, CustomRouter, {})
 );
 
 export default CustomTransitioner;
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: Platform.OS === 'ios' ? 20 : 0,
-  },
   view: {
     position: 'absolute',
     left: 0,

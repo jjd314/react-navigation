@@ -1,5 +1,3 @@
-/* @flow */
-
 import React from 'react';
 import {
   I18nManager,
@@ -10,31 +8,11 @@ import {
   StyleSheet,
 } from 'react-native';
 
-import type { LayoutEvent, TextStyleProp } from '../../TypeDefinition';
-
 import TouchableItem from '../TouchableItem';
 
-type Props = {
-  onPress?: () => void,
-  pressColorAndroid?: string,
-  title?: ?string,
-  titleStyle?: ?TextStyleProp,
-  tintColor?: ?string,
-  truncatedTitle?: ?string,
-  width?: ?number,
-};
+const defaultBackImage = require('../assets/back-icon.png');
 
-type DefaultProps = {
-  pressColorAndroid: string,
-  tintColor: ?string,
-  truncatedTitle: ?string,
-};
-
-type State = {
-  initialTextWidth?: number,
-};
-
-class HeaderBackButton extends React.PureComponent<DefaultProps, Props, State> {
+class HeaderBackButton extends React.PureComponent {
   static defaultProps = {
     pressColorAndroid: 'rgba(0, 0, 0, .32)',
     tintColor: Platform.select({
@@ -45,7 +23,7 @@ class HeaderBackButton extends React.PureComponent<DefaultProps, Props, State> {
 
   state = {};
 
-  _onTextLayout = (e: LayoutEvent) => {
+  _onTextLayout = e => {
     if (this.state.initialTextWidth) {
       return;
     }
@@ -53,6 +31,35 @@ class HeaderBackButton extends React.PureComponent<DefaultProps, Props, State> {
       initialTextWidth: e.nativeEvent.layout.x + e.nativeEvent.layout.width,
     });
   };
+
+  _renderBackImage() {
+    const { backImage, title, tintColor } = this.props;
+
+    let BackImage;
+    let props;
+
+    if (React.isValidElement(backImage)) {
+      return backImage;
+    } else if (backImage) {
+      BackImage = backImage;
+      props = {
+        tintColor,
+        title,
+      };
+    } else {
+      BackImage = Image;
+      props = {
+        style: [
+          styles.icon,
+          !!title && styles.iconWithTitle,
+          !!tintColor && { tintColor },
+        ],
+        source: defaultBackImage,
+      };
+    }
+
+    return <BackImage {...props} />;
+  }
 
   render() {
     const {
@@ -72,9 +79,6 @@ class HeaderBackButton extends React.PureComponent<DefaultProps, Props, State> {
 
     const backButtonTitle = renderTruncated ? truncatedTitle : title;
 
-    // eslint-disable-next-line global-require
-    const asset = require('../assets/back-icon.png');
-
     return (
       <TouchableItem
         accessibilityComponentType="button"
@@ -88,16 +92,9 @@ class HeaderBackButton extends React.PureComponent<DefaultProps, Props, State> {
         borderless
       >
         <View style={styles.container}>
-          <Image
-            style={[
-              styles.icon,
-              !!title && styles.iconWithTitle,
-              !!tintColor && { tintColor },
-            ]}
-            source={asset}
-          />
+          {this._renderBackImage()}
           {Platform.OS === 'ios' &&
-            title && (
+            typeof backButtonTitle === 'string' && (
               <Text
                 onLayout={this._onTextLayout}
                 style={[
@@ -131,7 +128,7 @@ const styles = StyleSheet.create({
       ? {
           height: 21,
           width: 13,
-          marginLeft: 10,
+          marginLeft: 9,
           marginRight: 22,
           marginVertical: 12,
           resizeMode: 'contain',
@@ -147,7 +144,7 @@ const styles = StyleSheet.create({
   iconWithTitle:
     Platform.OS === 'ios'
       ? {
-          marginRight: 5,
+          marginRight: 6,
         }
       : {},
 });

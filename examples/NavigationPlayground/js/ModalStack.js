@@ -3,31 +3,42 @@
  */
 
 import React from 'react';
-import { Button, ScrollView, Text } from 'react-native';
-import { StackNavigator } from 'react-navigation';
+import { ScrollView, StatusBar, Text } from 'react-native';
+import { SafeAreaView, createStackNavigator } from 'react-navigation';
 import SampleText from './SampleText';
+import { Button } from './commonComponents/ButtonWithMargin';
 
 const MyNavScreen = ({ navigation, banner }) => (
   <ScrollView>
-    <SampleText>{banner}</SampleText>
-    <Button
-      onPress={() => navigation.navigate('Profile', { name: 'Jane' })}
-      title="Go to a profile screen"
-    />
-    <Button
-      onPress={() => navigation.navigate('HeaderTest')}
-      title="Go to a header toggle screen"
-    />
-    {navigation.state.routeName === 'HeaderTest' &&
+    <SafeAreaView
+      forceInset={{
+        top: navigation.state.routeName === 'HeaderTest' ? 'always' : 'never',
+      }}
+    >
+      <SampleText>{banner}</SampleText>
       <Button
-        title="Toggle Header"
-        onPress={() =>
-          navigation.setParams({
-            headerVisible: !navigation.state.params ||
-              !navigation.state.params.headerVisible,
-          })}
-      />}
-    <Button onPress={() => navigation.goBack(null)} title="Go back" />
+        onPress={() => navigation.navigate('Profile', { name: 'Jane' })}
+        title="Go to a profile screen"
+      />
+      <Button
+        onPress={() => navigation.navigate('HeaderTest')}
+        title="Go to a header toggle screen"
+      />
+      {navigation.state.routeName === 'HeaderTest' && (
+        <Button
+          title="Toggle Header"
+          onPress={() =>
+            navigation.setParams({
+              headerVisible:
+                !navigation.state.params ||
+                !navigation.state.params.headerVisible,
+            })
+          }
+        />
+      )}
+      <Button onPress={() => navigation.goBack(null)} title="Go back" />
+    </SafeAreaView>
+    <StatusBar barStyle="default" />
   </ScrollView>
 );
 
@@ -48,7 +59,7 @@ MyProfileScreen.navigationOptions = ({ navigation }) => ({
   title: `${navigation.state.params.name}'s Profile!`,
 });
 
-const ProfileNavigator = StackNavigator(
+const ProfileNavigator = createStackNavigator(
   {
     Home: {
       screen: MyHomeScreen,
@@ -60,8 +71,9 @@ const ProfileNavigator = StackNavigator(
   },
   {
     navigationOptions: {
-      header: null,
+      headerLeft: null,
     },
+    mode: 'modal',
   }
 );
 
@@ -77,17 +89,17 @@ MyHeaderTestScreen.navigationOptions = ({ navigation }) => {
   };
 };
 
-const ModalStack = StackNavigator(
+const ModalStack = createStackNavigator(
   {
-    Home: {
-      screen: MyHomeScreen,
-    },
     ProfileNavigator: {
       screen: ProfileNavigator,
     },
     HeaderTest: { screen: MyHeaderTestScreen },
   },
   {
+    navigationOptions: {
+      header: null,
+    },
     mode: 'modal',
   }
 );
