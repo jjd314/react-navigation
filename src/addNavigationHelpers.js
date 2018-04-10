@@ -85,5 +85,7 @@ export default function(navigation) {
           key: navigation.state.key,
         })
       ),
+
+    addListener: () => {}
   };
 }
