@@ -1,11 +1,12 @@
 import React from 'react';
-import withLifecyclePolyfill from 'react-lifecycles-compat';
 import { Linking, AsyncStorage } from 'react-native';
+import { polyfill } from 'react-lifecycles-compat';
 
 import { BackHandler } from './PlatformHelpers';
 import NavigationActions from './NavigationActions';
-import addNavigationHelpers from './addNavigationHelpers';
 import invariant from './utils/invariant';
+import getNavigationActionCreators from './routers/getNavigationActionCreators';
+import docsUrl from './utils/docsUrl';
 
 function isStateful(props) {
   return !props.navigation;
@@ -32,12 +33,22 @@ function validateProps(props) {
   }
 }
 
+// Track the number of stateful container instances. Warn if >0 and not using the
+// detached prop to explicitly acknowledge the behavior. We should deprecated implicit
+// stateful navigation containers in a future release and require a provider style pattern
+// instead in order to eliminate confusion entirely.
+let _statefulContainerCount = 0;
+export function _TESTING_ONLY_reset_container_count() {
+  _statefulContainerCount = 0;
+}
+
 // We keep a global flag to catch errors during the state persistence hydrating scenario.
 // The innermost navigator who catches the error will dispatch a new init action.
 let _reactNavigationIsHydratingState = false;
-// Unfortunate to use global state here, but it seems necessesary for the time being. There seems to
-// be some problems with cascading componentDidCatch handlers. Ideally the inner non-stateful navigator
-// catches the error and re-throws it, to be caught by the top-level stateful navigator.
+// Unfortunate to use global state here, but it seems necessesary for the time
+// being. There seems to be some problems with cascading componentDidCatch
+// handlers. Ideally the inner non-stateful navigator catches the error and
+// re-throws it, to be caught by the top-level stateful navigator.
 
 /**
  * Create an HOC that injects the navigation and manages the navigation state
@@ -186,26 +197,45 @@ export default function createNavigationContainer(Component) {
         return;
       }
 
+      if (__DEV__ && !this.props.detached) {
+        if (_statefulContainerCount > 0) {
+          console.error(
+            `You should only render one navigator explicitly in your app, and other navigators should by rendered by including them in that navigator. Full details at: ${docsUrl(
+              'common-mistakes.html#explicitly-rendering-more-than-one-navigator'
+            )}`
+          );
+        }
+      }
+      _statefulContainerCount++;
       Linking.addEventListener('url', this._handleOpenURL);
 
+      // Pull out anything that can impact state
       const { persistenceKey } = this.props;
       const startupStateJSON =
         persistenceKey && (await AsyncStorage.getItem(persistenceKey));
-      let startupState = null;
-      try {
-        startupState = startupStateJSON && JSON.parse(startupStateJSON);
-        _reactNavigationIsHydratingState = true;
-      } catch (e) {}
+      const url = await Linking.getInitialURL();
+      const parsedUrl = url && this._urlToPathAndParams(url);
 
+      // Initialize state. This must be done *after* any async code
+      // so we don't end up with a different value for this.state.nav
+      // due to changes while async function was resolving
       let action = this._initialAction;
+      let startupState = this.state.nav;
       if (!startupState) {
         !!process.env.REACT_NAV_LOGGING &&
           console.log('Init new Navigation State');
         startupState = Component.router.getStateForAction(action);
       }
 
-      const url = await Linking.getInitialURL();
-      const parsedUrl = url && this._urlToPathAndParams(url);
+      // Pull persisted state from AsyncStorage
+      if (startupStateJSON) {
+        try {
+          startupState = JSON.parse(startupStateJSON);
+          _reactNavigationIsHydratingState = true;
+        } catch (e) {}
+      }
+
+      // Pull state out of URL
       if (parsedUrl) {
         const { path, params } = parsedUrl;
         const urlAction = Component.router.getActionForPathAndParams(
@@ -222,8 +252,8 @@ export default function createNavigationContainer(Component) {
           );
         }
       }
-      this.setState({ nav: startupState }, () => {
-        _reactNavigationIsHydratingState = false;
+
+      const dispatchActions = () =>
         this._actionEventSubscribers.forEach(subscriber =>
           subscriber({
             type: 'action',
@@ -232,6 +262,15 @@ export default function createNavigationContainer(Component) {
             lastState: null,
           })
         );
+
+      if (startupState === this.state.nav) {
+        dispatchActions();
+        return;
+      }
+
+      this.setState({ nav: startupState }, () => {
+        _reactNavigationIsHydratingState = false;
+        dispatchActions();
       });
     }
 
@@ -257,6 +296,10 @@ export default function createNavigationContainer(Component) {
       this._isMounted = false;
       Linking.removeEventListener('url', this._handleOpenURL);
       this.subs && this.subs.remove();
+
+      if (this._isStateful()) {
+        _statefulContainerCount--;
+      }
     }
 
     // Per-tick temporary storage for state.nav
@@ -302,7 +345,7 @@ export default function createNavigationContainer(Component) {
           return this._renderLoading();
         }
         if (!this._navigation || this._navigation.state !== nav) {
-          this._navigation = addNavigationHelpers({
+          this._navigation = {
             dispatch: this.dispatch,
             state: nav,
             addListener: (eventName, handler) => {
@@ -316,6 +359,11 @@ export default function createNavigationContainer(Component) {
                 },
               };
             },
+          };
+          const actionCreators = getNavigationActionCreators(nav);
+          Object.keys(actionCreators).forEach(actionName => {
+            this._navigation[actionName] = (...args) =>
+              this.dispatch(actionCreators[actionName](...args));
           });
         }
         navigation = this._navigation;
@@ -325,5 +373,5 @@ export default function createNavigationContainer(Component) {
     }
   }
 
-  return withLifecyclePolyfill(NavigationContainer);
+  return polyfill(NavigationContainer);
 }

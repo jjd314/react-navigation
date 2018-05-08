@@ -488,11 +488,19 @@ declare module 'react-navigation' {
     goBack: (routeKey?: ?string) => boolean,
     dismiss: () => boolean,
     navigate: (
-      routeName: string,
+      routeName:
+        | string
+        | {
+            routeName: string,
+            params?: NavigationParams,
+            action?: NavigationNavigateAction,
+            key?: string,
+          },
       params?: NavigationParams,
       action?: NavigationNavigateAction
     ) => boolean,
     setParams: (newParams: NavigationParams) => boolean,
+    getParam: (paramName: string, fallback?: any) => any,
     addListener: (
       eventName: string,
       callback: NavigationEventCallback
@@ -509,6 +517,7 @@ declare module 'react-navigation' {
     ) => boolean,
     pop: (n?: number, params?: { immediate?: boolean }) => boolean,
     popToTop: (params?: { immediate?: boolean }) => boolean,
+    isFocused: () => boolean,
   };
 
   declare export type NavigationNavigatorProps<O: {}, S: {}> = $Shape<{
@@ -800,10 +809,6 @@ declare module 'react-navigation' {
     routeConfigs: NavigationRouteConfigMap,
     config?: _TabNavigatorConfig
   ): NavigationContainer<*, *, *>;
-  declare export function createMaterialBottomTabNavigator(
-    routeConfigs: NavigationRouteConfigMap,
-    config?: _TabNavigatorConfig
-  ): NavigationContainer<*, *, *>;
   declare export function createMaterialTopTabNavigator(
     routeConfigs: NavigationRouteConfigMap,
     config?: _TabNavigatorConfig
@@ -1079,13 +1084,17 @@ declare module 'react-navigation' {
   };
   declare export var TabBarBottom: React$ComponentType<_TabBarBottomProps>;
 
-  declare type _NavigationInjectedProps = {
-    navigation: NavigationScreenProp<NavigationStateRoute>,
-  };
-  declare export function withNavigation<T: {}>(
-    Component: React$ComponentType<T & _NavigationInjectedProps>
-  ): React$ComponentType<T>;
-  declare export function withNavigationFocus<T: {}>(
-    Component: React$ComponentType<T & _NavigationInjectedProps>
-  ): React$ComponentType<T>;
+  declare export function withNavigation<Props: {}>(
+    Component: React$ComponentType<Props>
+  ): React$ComponentType<
+    $Diff<
+      Props,
+      {
+        navigation: NavigationScreenProp<NavigationStateRoute> | void,
+      }
+    >
+  >;
+  declare export function withNavigationFocus<Props: {}>(
+    Component: React$ComponentType<Props>
+  ): React$ComponentType<$Diff<Props, { isFocused: boolean | void }>>;
 }

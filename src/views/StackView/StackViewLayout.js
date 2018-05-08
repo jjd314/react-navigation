@@ -9,18 +9,28 @@ import {
   View,
   I18nManager,
   Easing,
+  Dimensions,
 } from 'react-native';
 
 import Card from './StackViewCard';
 import Header from '../Header/Header';
 import NavigationActions from '../../NavigationActions';
+import StackActions from '../../routers/StackActions';
 import SceneView from '../SceneView';
+import withOrientation from '../withOrientation';
 import { NavigationProvider } from '../NavigationContext';
 
 import TransitionConfigs from './StackViewTransitionConfigs';
 import * as ReactNativeFeatures from '../../utils/ReactNativeFeatures';
 
 const emptyFunction = () => {};
+
+const { width: WINDOW_WIDTH, height: WINDOW_HEIGHT } = Dimensions.get('window');
+const IS_IPHONE_X =
+  Platform.OS === 'ios' &&
+  !Platform.isPad &&
+  !Platform.isTVOS &&
+  (WINDOW_HEIGHT === 812 || WINDOW_WIDTH === 812);
 
 const EaseInOut = Easing.inOut(Easing.ease);
 
@@ -83,11 +93,18 @@ class StackViewLayout extends React.Component {
     const { options } = scene.descriptor;
     const { header } = options;
 
-    if (typeof header !== 'undefined' && typeof header !== 'function') {
+    if (header === null && headerMode === 'screen') {
+      return null;
+    }
+
+    // check if it's a react element
+    if (React.isValidElement(header)) {
       return header;
     }
 
-    const renderHeader = header || ((props: *) => <Header {...props} />);
+    // Handle the case where the header option is a function, and provide the default
+    const renderHeader = header || (props => <Header {...props} />);
+
     const {
       headerLeftInterpolator,
       headerTitleInterpolator,
@@ -167,6 +184,7 @@ class StackViewLayout extends React.Component {
             immediate: true,
           })
         );
+        navigation.dispatch(StackActions.completeTransition());
       }
     };
 
@@ -209,8 +227,12 @@ class StackViewLayout extends React.Component {
     const { index } = navigation.state;
     const isVertical = mode === 'modal';
     const { options } = scene.descriptor;
+    const gestureDirection = options.gestureDirection;
 
-    const gestureDirectionInverted = options.gestureDirection === 'inverted';
+    const gestureDirectionInverted =
+      typeof gestureDirection === 'string'
+        ? gestureDirection === 'inverted'
+        : I18nManager.isRTL;
 
     const gesturesEnabled =
       typeof options.gesturesEnabled === 'boolean'
@@ -223,12 +245,14 @@ class StackViewLayout extends React.Component {
           onPanResponderTerminate: () => {
             this._isResponding = false;
             this._reset(index, 0);
+            this.props.onGestureCanceled && this.props.onGestureCanceled();
           },
           onPanResponderGrant: () => {
             position.stopAnimation((value: number) => {
               this._isResponding = true;
               this._gestureStartValue = value;
             });
+            this.props.onGestureBegin && this.props.onGestureBegin();
           },
           onMoveShouldSetPanResponder: (event, gesture) => {
             if (index !== scene.index) {
@@ -282,7 +306,7 @@ class StackViewLayout extends React.Component {
               ? layout.height.__getValue()
               : layout.width.__getValue();
             const currentValue =
-              (I18nManager.isRTL && axis === 'dx') !== gestureDirectionInverted
+              axis === 'dx' && gestureDirectionInverted
                 ? startValue + gesture[axis] / axisDistance
                 : startValue - gesture[axis] / axisDistance;
             const value = clamp(index - 1, currentValue, index);
@@ -327,10 +351,12 @@ class StackViewLayout extends React.Component {
               // If the speed of the gesture release is significant, use that as the indication
               // of intent
               if (gestureVelocity < -0.5) {
+                this.props.onGestureCanceled && this.props.onGestureCanceled();
                 this._reset(immediateIndex, resetDuration);
                 return;
               }
               if (gestureVelocity > 0.5) {
+                this.props.onGestureFinish && this.props.onGestureFinish();
                 this._goBack(immediateIndex, goBackDuration);
                 return;
               }
@@ -338,8 +364,10 @@ class StackViewLayout extends React.Component {
               // Then filter based on the distance the screen was moved. Over a third of the way swiped,
               // and the back will happen.
               if (value <= index - POSITION_THRESHOLD) {
+                this.props.onGestureFinish && this.props.onGestureFinish();
                 this._goBack(immediateIndex, goBackDuration);
               } else {
+                this.props.onGestureCanceled && this.props.onGestureCanceled();
                 this._reset(immediateIndex, resetDuration);
               }
             });
@@ -433,11 +461,34 @@ class StackViewLayout extends React.Component {
       screenInterpolator &&
       screenInterpolator({ ...this.props.transitionProps, scene });
 
+    // If this screen has "header" set to `null` in it's navigation options, but
+    // it exists in a stack with headerMode float, add a negative margin to
+    // compensate for the hidden header
+    const { options } = scene.descriptor;
+    const hasHeader = options.header !== null;
+    const headerMode = this._getHeaderMode();
+    let marginTop = 0;
+    if (!hasHeader && headerMode === 'float') {
+      const { isLandscape } = this.props;
+      let headerHeight;
+      if (Platform.OS === 'android') {
+        // TODO: Need to handle translucent status bar.
+        headerHeight = 56;
+      } else if (isLandscape && !Platform.isPad) {
+        headerHeight = 52;
+      } else if (IS_IPHONE_X) {
+        headerHeight = 88;
+      } else {
+        headerHeight = 64;
+      }
+      marginTop = -headerHeight;
+    }
+
     return (
       <Card
         {...this.props.transitionProps}
         key={`card_${scene.key}`}
-        style={[style, this.props.cardStyle]}
+        style={[style, { marginTop }, this.props.cardStyle]}
         scene={scene}
       >
         {this._renderInnerScene(scene)}
@@ -460,4 +511,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default StackViewLayout;
+export default withOrientation(StackViewLayout);
