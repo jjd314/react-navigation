@@ -39,7 +39,7 @@ class Header extends React.PureComponent {
     leftLabelInterpolator: HeaderStyleInterpolator.forLeftLabel,
     titleFromLeftInterpolator: HeaderStyleInterpolator.forCenterFromLeft,
     titleInterpolator: HeaderStyleInterpolator.forCenter,
-    rightInterpolator: HeaderStyleInterpolator.forRight,
+    rightInterpolator: HeaderStyleInterpolator.forRight
   };
 
   static get HEIGHT() {
@@ -146,9 +146,11 @@ class Header extends React.PureComponent {
     const RenderedLeftComponent = options.headerLeft || HeaderBackButton;
     const goBack = () => {
       // Go back on next tick because button ripple effect needs to happen on Android
-      requestAnimationFrame(() => {
-        props.scene.descriptor.navigation.goBack(props.scene.descriptor.key);
-      });
+      if(!options.onBackPress || options.onBackPress() !== true) {
+        requestAnimationFrame(() => {
+          props.scene.descriptor.navigation.goBack(props.scene.descriptor.key);
+        });
+      }
     };
     return (
       <RenderedLeftComponent
@@ -175,14 +177,16 @@ class Header extends React.PureComponent {
       props.scene
     );
     const width = this.state.widths[props.scene.key]
-      ? (this.props.layout.initWidth - this.state.widths[props.scene.key]) / 2
-      : undefined;
+                ? (this.props.layout.initWidth - this.state.widths[props.scene.key]) / 2
+                : undefined;
 
     const goBack = () => {
       // Go back on next tick because button ripple effect needs to happen on Android
-      requestAnimationFrame(() => {
-        navigation.goBack(props.scene.descriptor.key);
-      });
+      if(!options.onBackPress || options.onBackPress() !== true) {
+        requestAnimationFrame(() => {
+          navigation.goBack(props.scene.descriptor.key);
+        });
+      }
     };
 
     return (
@@ -261,8 +265,8 @@ class Header extends React.PureComponent {
       'title',
       this._renderTitleComponent,
       transitionPreset === 'uikit'
-        ? this.props.titleFromLeftInterpolator
-        : this.props.titleInterpolator
+      ? this.props.titleFromLeftInterpolator
+      : this.props.titleInterpolator
     );
   }
 
@@ -413,7 +417,7 @@ class Header extends React.PureComponent {
             <View style={styles.iconMaskContainer}>
               <Image
                 source={require('../assets/back-icon-mask.png')}
-                style={styles.iconMask}
+                       style={styles.iconMask}
               />
               <View style={styles.iconMaskFillerRect} />
             </View>
