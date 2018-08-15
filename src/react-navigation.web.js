@@ -8,19 +8,16 @@ module.exports = {
   get StateUtils() {
     return require('./StateUtils').default;
   },
+  get getNavigation() {
+    return require('./getNavigation').default;
+  },
 
   // Navigators
   get createNavigator() {
     return require('./navigators/createNavigator').default;
   },
-  get StackNavigator() {
-    return require('./navigators/StackNavigator').default;
-  },
-  get TabNavigator() {
-    return require('./navigators/TabNavigator').default;
-  },
-  get DrawerNavigator() {
-    return require('./navigators/DrawerNavigator').default;
+  get createSwitchNavigator() {
+    return require('./navigators/createSwitchNavigator').default;
   },
 
   // Actions
@@ -43,6 +40,11 @@ module.exports = {
   },
   get SwitchRouter() {
     return require('./routers/SwitchRouter').default;
+  },
+
+  // NavigationEvents
+  get NavigationEvents() {
+    return require('./views/NavigationEvents').default;
   },
 
   // HOCs

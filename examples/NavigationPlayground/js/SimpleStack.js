@@ -10,15 +10,21 @@ import type {
 } from 'react-navigation';
 
 import * as React from 'react';
-import { ScrollView, StatusBar } from 'react-native';
+import { Platform, ScrollView, StatusBar } from 'react-native';
 import {
   createStackNavigator,
   SafeAreaView,
   withNavigation,
+  NavigationActions,
+  StackActions,
 } from 'react-navigation';
+import invariant from 'invariant';
+
 import SampleText from './SampleText';
 import { Button } from './commonComponents/ButtonWithMargin';
 import { HeaderButtons } from './commonComponents/HeaderButtons';
+
+const DEBUG = false;
 
 type MyNavScreenProps = {
   navigation: NavigationScreenProp<NavigationState>,
@@ -48,25 +54,55 @@ const MyBackButtonWithNavigation = withNavigation(MyBackButton);
 class MyNavScreen extends React.Component<MyNavScreenProps> {
   render() {
     const { navigation, banner } = this.props;
+    const { push, replace, popToTop, pop, dismiss } = navigation;
+    invariant(
+      push && replace && popToTop && pop && dismiss,
+      'missing action creators for StackNavigator'
+    );
     return (
       <SafeAreaView>
         <SampleText>{banner}</SampleText>
         <Button
-          onPress={() => navigation.push('Profile', { name: 'Jane' })}
+          onPress={() => push('Profile', { name: 'Jane' })}
           title="Push a profile screen"
+        />
+        <Button
+          onPress={() =>
+            navigation.dispatch(
+              StackActions.reset({
+                index: 0,
+                actions: [
+                  NavigationActions.navigate({
+                    routeName: 'Photos',
+                    params: { name: 'Jane' },
+                  }),
+                ],
+              })
+            )
+          }
+          title="Reset photos"
         />
         <Button
           onPress={() => navigation.navigate('Photos', { name: 'Jane' })}
           title="Navigate to a photos screen"
         />
         <Button
-          onPress={() => navigation.replace('Profile', { name: 'Lucy' })}
+          onPress={() => replace('Profile', { name: 'Lucy' })}
           title="Replace with profile"
         />
-        <Button onPress={() => navigation.popToTop()} title="Pop to top" />
-        <Button onPress={() => navigation.pop()} title="Pop" />
-        <Button onPress={() => navigation.goBack()} title="Go back" />
-        <Button onPress={() => navigation.dismiss()} title="Dismiss" />
+        <Button onPress={() => popToTop()} title="Pop to top" />
+        <Button onPress={() => pop()} title="Pop" />
+        <Button
+          onPress={() => {
+            if (navigation.goBack()) {
+              console.log('goBack handled');
+            } else {
+              console.log('goBack unhandled');
+            }
+          }}
+          title="Go back"
+        />
+        <Button onPress={() => dismiss()} title="Dismiss" />
         <StatusBar barStyle="default" />
       </SafeAreaView>
     );
@@ -99,16 +135,16 @@ class MyHomeScreen extends React.Component<MyHomeScreenProps> {
     this._s3.remove();
   }
   _onWF = a => {
-    console.log('_willFocus HomeScreen', a);
+    DEBUG && console.log('_willFocus HomeScreen', a);
   };
   _onDF = a => {
-    console.log('_didFocus HomeScreen', a);
+    DEBUG && console.log('_didFocus HomeScreen', a);
   };
   _onWB = a => {
-    console.log('_willBlur HomeScreen', a);
+    DEBUG && console.log('_willBlur HomeScreen', a);
   };
   _onDB = a => {
-    console.log('_didBlur HomeScreen', a);
+    DEBUG && console.log('_didBlur HomeScreen', a);
   };
 
   render() {
@@ -143,16 +179,16 @@ class MyPhotosScreen extends React.Component<MyPhotosScreenProps> {
     this._s3.remove();
   }
   _onWF = a => {
-    console.log('_willFocus PhotosScreen', a);
+    DEBUG && console.log('_willFocus PhotosScreen', a);
   };
   _onDF = a => {
-    console.log('_didFocus PhotosScreen', a);
+    DEBUG && console.log('_didFocus PhotosScreen', a);
   };
   _onWB = a => {
-    console.log('_willBlur PhotosScreen', a);
+    DEBUG && console.log('_willBlur PhotosScreen', a);
   };
   _onDB = a => {
-    console.log('_didBlur PhotosScreen', a);
+    DEBUG && console.log('_didBlur PhotosScreen', a);
   };
 
   render() {
@@ -197,18 +233,23 @@ MyProfileScreen.navigationOptions = props => {
   };
 };
 
-const SimpleStack = createStackNavigator({
-  Home: {
-    screen: MyHomeScreen,
+const SimpleStack = createStackNavigator(
+  {
+    Home: {
+      screen: MyHomeScreen,
+    },
+    Profile: {
+      path: 'people/:name',
+      screen: MyProfileScreen,
+    },
+    Photos: {
+      path: 'photos/:name',
+      screen: MyPhotosScreen,
+    },
   },
-  Profile: {
-    path: 'people/:name',
-    screen: MyProfileScreen,
-  },
-  Photos: {
-    path: 'photos/:name',
-    screen: MyPhotosScreen,
-  },
-});
+  {
+    // headerLayoutPreset: 'center',
+  }
+);
 
 export default SimpleStack;
