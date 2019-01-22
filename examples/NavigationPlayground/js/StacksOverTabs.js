@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   createStackNavigator,
   createBottomTabNavigator,
+  getActiveChildNavigationOptions,
 } from 'react-navigation';
 
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -16,7 +17,7 @@ import { Button } from './commonComponents/ButtonWithMargin';
 
 const MyNavScreen = ({ navigation, banner }) => (
   <ScrollView>
-    <SafeAreaView forceInset={{ horizontal: 'always' }}>
+    <SafeAreaView forceInset={{ horizontal: 'always', vertical: 'never' }}>
       <SampleText>{banner}</SampleText>
       <Button
         onPress={() => navigation.navigate('Profile', { name: 'Jordan' })}
@@ -65,7 +66,7 @@ const TabNav = createBottomTabNavigator(
         tabBarLabel: 'Home',
         tabBarIcon: ({ tintColor, focused }) => (
           <Ionicons
-            name={focused ? 'ios-home' : 'ios-home-outline'}
+            name={focused ? 'ios-home' : 'ios-home'}
             size={26}
             style={{ color: tintColor }}
           />
@@ -79,7 +80,7 @@ const TabNav = createBottomTabNavigator(
         title: 'Settings',
         tabBarIcon: ({ tintColor, focused }) => (
           <Ionicons
-            name={focused ? 'ios-settings' : 'ios-settings-outline'}
+            name={focused ? 'ios-settings' : 'ios-settings'}
             size={26}
             style={{ color: tintColor }}
           />
@@ -94,16 +95,10 @@ const TabNav = createBottomTabNavigator(
   }
 );
 
-TabNav.navigationOptions = ({ navigation }) => {
-  let { routeName } = navigation.state.routes[navigation.state.index];
-  let title;
-  if (routeName === 'SettingsTab') {
-    title = 'Settings';
-  } else if (routeName === 'MainTab') {
-    title = 'Home';
-  }
+TabNav.navigationOptions = ({ navigation, screenProps }) => {
+  const childOptions = getActiveChildNavigationOptions(navigation, screenProps);
   return {
-    title,
+    title: childOptions.title,
   };
 };
 
